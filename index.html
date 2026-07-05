@@ -280,6 +280,40 @@
     font-size: 0.9rem;
   }
 
+  .roadmap {
+    background: #f5f8f9;
+    border-radius: 10px;
+    padding: 14px 16px 10px;
+    margin-bottom: 12px;
+  }
+  .roadmap-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .roadmap-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+  }
+  .roadmap-row + .roadmap-row { border-top: 1px solid var(--border); }
+  .rm-range { color: var(--muted); font-weight: 600; font-size: 0.95rem; flex: 1 1 auto; }
+  .rm-per { font-weight: 700; color: var(--accent-dark); font-size: 0.98rem; white-space: nowrap; }
+  .rm-amt {
+    font-weight: 800;
+    font-size: 1.05rem;
+    white-space: nowrap;
+    min-width: 82px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   .subtotal {
     display: flex;
     justify-content: space-between;
@@ -394,10 +428,11 @@
       <button class="btn btn-reset" type="button" onclick="resetAll()">Reset</button>
     </div>
 
-    <div class="start-bar hidden" id="startBar">
-      <label for="startMonth">Contract start month</label>
+    <div class="start-bar" id="startBar">
+      <label for="startMonth">Contract start</label>
       <select id="startMonth"></select>
-      <span class="start-hint">Used to work out how many April price increases fall within the term</span>
+      <select id="startYear"></select>
+      <span class="start-hint">Sets the quote dates and how many April price increases fall within the term</span>
     </div>
 
     <div class="columns">
@@ -531,7 +566,8 @@
       html += '<div class="subtotal"><span class="lbl">' + s.label + '</span>' +
               '<span class="val" id="' + s.id + '">&pound;0.00</span></div>';
     });
-    html += '<div class="total-box"><div class="lbl">' + col.totalLabel + '</div>' +
+    html += '<div class="roadmap hidden" id="' + prefix + '_roadmap"></div>' +
+            '<div class="total-box"><div class="lbl">' + col.totalLabel + '</div>' +
             '<div class="val" id="' + col.totalId + '">&pound;0.00</div></div>';
     return html;
   }
@@ -539,13 +575,21 @@
   var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
                      'July', 'August', 'September', 'October', 'November', 'December'];
 
-  function initStartMonth() {
-    var sel = document.getElementById('startMonth');
-    sel.innerHTML = MONTH_NAMES.map(function (n, i) {
+  function initStartControls() {
+    var now = new Date();
+    var mSel = document.getElementById('startMonth');
+    mSel.innerHTML = MONTH_NAMES.map(function (n, i) {
       return '<option value="' + i + '">' + n + '</option>';
     }).join('');
-    sel.value = String(new Date().getMonth());
-    document.getElementById('startBar').classList.add('hidden');
+    mSel.value = String(now.getMonth());
+
+    var ySel = document.getElementById('startYear');
+    var years = [];
+    for (var y = now.getFullYear() - 1; y <= now.getFullYear() + 2; y++) {
+      years.push('<option value="' + y + '">' + y + '</option>');
+    }
+    ySel.innerHTML = years.join('');
+    ySel.value = String(now.getFullYear());
   }
 
   function buildMode(mode) {
@@ -555,7 +599,7 @@
     document.getElementById('titleB').textContent = m.colB.name;
     document.getElementById('bodyA').innerHTML = columnHTML(m.colA, 'a');
     document.getElementById('bodyB').innerHTML = columnHTML(m.colB, 'b');
-    initStartMonth();
+    initStartControls();
 
     document.querySelectorAll('#calculator input, #calculator select').forEach(function (inp) {
       var handler = function () {
@@ -574,7 +618,6 @@
     var bOn = document.getElementById('b_incchk').checked;
     document.getElementById('a_incwrap').classList.toggle('hidden', !aOn);
     document.getElementById('b_incwrap').classList.toggle('hidden', !bOn);
-    document.getElementById('startBar').classList.toggle('hidden', !aOn && !bOn);
   }
 
   function num(id) {
@@ -583,23 +626,35 @@
     return v;
   }
 
-  // Sum of all monthly payments for a column, applying the April price
-  // increase cumulatively from each April that falls within the term
-  // (the start month itself never counts — the customer signs at the
-  // current price). A typical 24-month contract picks up 2 increases.
-  function monthlySum(prefix) {
+  // Builds the full payment schedule for a column, applying the April
+  // price increase cumulatively from each April that falls within the
+  // term (the start month itself never counts — the customer signs at
+  // the current price). A typical 24-month contract picks up 2
+  // increases. Consecutive months at the same price are grouped into
+  // segments for the payment roadmap.
+  function computeSchedule(prefix) {
     var base = num(prefix + '_monthly');
     var months = num(prefix + '_months');
     var incOn = document.getElementById(prefix + '_incchk').checked;
     var inc = incOn ? num(prefix + '_incamt') : 0;
-    var start = parseInt(document.getElementById('startMonth').value, 10) || 0;
+    var startM = parseInt(document.getElementById('startMonth').value, 10) || 0;
+    var startY = parseInt(document.getElementById('startYear').value, 10) || new Date().getFullYear();
 
     var whole = Math.floor(months);
     var rises = 0;
     var sum = 0;
+    var segments = [];
+    var cur = null;
     for (var k = 1; k <= whole; k++) {
-      if (k > 1 && (start + k - 1) % 12 === 3) rises++;
-      sum += base + inc * rises;
+      if (k > 1 && (startM + k - 1) % 12 === 3) rises++;
+      var price = base + inc * rises;
+      sum += price;
+      if (cur && cur.price === price) {
+        cur.count++;
+      } else {
+        cur = { price: price, offset: k - 1, count: 1 };
+        segments.push(cur);
+      }
     }
     sum += (months - whole) * (base + inc * rises);
 
@@ -607,23 +662,61 @@
       document.getElementById(prefix + '_incnote').textContent =
         rises + ' April increase' + (rises === 1 ? '' : 's') + ' within this term';
     }
-    return sum;
+    return { sum: sum, segments: segments, startM: startM, startY: startY };
+  }
+
+  function monthLabel(sched, offset) {
+    var abs = sched.startM + offset;
+    return MONTH_NAMES[abs % 12].slice(0, 3) + ' ' + (sched.startY + Math.floor(abs / 12));
+  }
+
+  function renderRoadmap(prefix, sched, upfront, upfrontLabel) {
+    var el = document.getElementById(prefix + '_roadmap');
+    if (sched.sum <= 0 && upfront <= 0) {
+      el.classList.add('hidden');
+      el.innerHTML = '';
+      return;
+    }
+    var html = '<div class="roadmap-title">Payment roadmap</div>';
+    if (upfront > 0) {
+      html += '<div class="roadmap-row">' +
+                '<span class="rm-range">' + monthLabel(sched, 0) + ' &middot; today</span>' +
+                '<span class="rm-per">' + upfrontLabel + '</span>' +
+                '<span class="rm-amt">' + gbp.format(upfront) + '</span>' +
+              '</div>';
+    }
+    sched.segments.forEach(function (seg) {
+      var from = monthLabel(sched, seg.offset);
+      var to = monthLabel(sched, seg.offset + seg.count - 1);
+      var range = seg.count === 1 ? from : from + ' &ndash; ' + to;
+      html += '<div class="roadmap-row">' +
+                '<span class="rm-range">' + range + '</span>' +
+                '<span class="rm-per">' + seg.count + ' &times; ' + gbp.format(seg.price) + '/mo</span>' +
+                '<span class="rm-amt">' + gbp.format(seg.price * seg.count) + '</span>' +
+              '</div>';
+    });
+    el.innerHTML = html;
+    el.classList.remove('hidden');
   }
 
   function calculate() {
     var totalA, totalB;
-    var aPayments = monthlySum('a');
-    var bPayments = monthlySum('b');
+    var schedA = computeSchedule('a');
+    var schedB = computeSchedule('b');
 
     if (currentMode === 1) {
-      totalA = num('a_upfront') + aPayments;
-      totalB = num('b_upfront') + bPayments;
-      setMoney('a_sub1', aPayments);
-      setMoney('b_sub1', bPayments);
+      totalA = num('a_upfront') + schedA.sum;
+      totalB = num('b_upfront') + schedB.sum;
+      setMoney('a_sub1', schedA.sum);
+      setMoney('b_sub1', schedB.sum);
+      renderRoadmap('a', schedA, num('a_upfront'), 'upfront cost');
+      renderRoadmap('b', schedB, num('b_upfront'), 'upfront cost');
     } else {
-      totalA = num('a_phone') + aPayments;
-      totalB = num('b_upfront') + bPayments;
-      setMoney('a_sub1', aPayments);
+      totalA = num('a_phone') + schedA.sum;
+      totalB = num('b_upfront') + schedB.sum;
+      setMoney('a_sub1', schedA.sum);
+      renderRoadmap('a', schedA, num('a_phone'), 'phone paid outright');
+      renderRoadmap('b', schedB, num('b_upfront'), 'contract upfront');
     }
 
     setMoney('a_total', totalA);
