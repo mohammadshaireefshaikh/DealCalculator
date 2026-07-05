@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deal Comparison Calculator</title>
+<style>
+  :root {
+    --accent: #008080;
+    --accent-dark: #006666;
+    --accent-light: #e6f4f4;
+    --ink: #1a2b33;
+    --muted: #5c6b73;
+    --border: #dde5e8;
+    --win-bg: #e8f7ee;
+    --win-border: #2e9e5b;
+    --win-ink: #1b6e3d;
+    --radius: 14px;
+    --shadow: 0 4px 18px rgba(16, 42, 51, 0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #ffffff;
+    color: var(--ink);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+  }
+
+  header.app-header {
+    text-align: center;
+    padding: 18px 0 26px;
+  }
+  header.app-header h1 {
+    font-size: clamp(1.6rem, 4vw, 2.3rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  header.app-header h1 span { color: var(--accent); }
+  header.app-header p {
+    color: var(--muted);
+    margin-top: 6px;
+    font-size: 1.05rem;
+  }
+
+  /* ---------- Mode selection ---------- */
+  .mode-select {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    margin-top: 10px;
+  }
+  .mode-card {
+    background: #fff;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 34px 28px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    font: inherit;
+  }
+  .mode-card:hover, .mode-card:focus-visible {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 26px rgba(0, 128, 128, 0.16);
+    outline: none;
+  }
+  .mode-card .icon {
+    font-size: 2.6rem;
+    display: block;
+    margin-bottom: 14px;
+  }
+  .mode-card h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .mode-card p {
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+  .mode-card .go {
+    display: inline-block;
+    margin-top: 18px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    padding: 12px 26px;
+    border-radius: 999px;
+    font-size: 1rem;
+  }
+
+  /* ---------- Calculator ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .topbar h2 {
+    font-size: clamp(1.25rem, 3vw, 1.7rem);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .btn {
+    font: inherit;
+    font-weight: 700;
+    border: none;
+    border-radius: 999px;
+    padding: 12px 22px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.15s;
+  }
+  .btn-ghost {
+    background: #fff;
+    color: var(--accent-dark);
+    border: 2px solid var(--border);
+  }
+  .btn-ghost:hover { border-color: var(--accent); }
+  .btn-reset {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-reset:hover { background: var(--accent-dark); }
+
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    align-items: start;
+  }
+
+  .deal-card {
+    background: #fff;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .deal-card .card-head {
+    background: var(--accent-light);
+    padding: 16px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .deal-card .card-head h3 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--accent-dark);
+  }
+  .badge {
+    display: none;
+    background: var(--win-border);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 800;
+    padding: 6px 14px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .deal-card.winner { border-color: var(--win-border); box-shadow: 0 6px 24px rgba(46, 158, 91, 0.22); }
+  .deal-card.winner .card-head { background: var(--win-bg); }
+  .deal-card.winner .card-head h3 { color: var(--win-ink); }
+  .deal-card.winner .badge { display: inline-block; }
+
+  .card-body { padding: 22px; }
+
+  .field { margin-bottom: 18px; }
+  .field label {
+    display: block;
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 7px;
+  }
+  .input-wrap { position: relative; }
+  .input-wrap .prefix {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .field input {
+    width: 100%;
+    font: inherit;
+    font-size: 1.35rem;
+    font-weight: 600;
+    padding: 14px 16px 14px 38px;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    color: var(--ink);
+    background: #fff;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .field input.no-prefix { padding-left: 16px; }
+  .field input::-webkit-outer-spin-button,
+  .field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 128, 128, 0.15);
+  }
+
+  .subtotal {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    background: #f5f8f9;
+    border-radius: 10px;
+    padding: 13px 16px;
+    margin-bottom: 12px;
+  }
+  .subtotal .lbl { color: var(--muted); font-weight: 600; font-size: 0.98rem; }
+  .subtotal .val { font-weight: 800; font-size: 1.25rem; white-space: nowrap; }
+
+  .total-box {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 12px;
+    padding: 18px 20px;
+    text-align: center;
+    margin-top: 6px;
+  }
+  .deal-card.winner .total-box { background: var(--win-border); }
+  .total-box .lbl {
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.9;
+  }
+  .total-box .val {
+    font-size: clamp(1.9rem, 5vw, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-top: 4px;
+  }
+
+  /* ---------- Result ---------- */
+  .result {
+    margin-top: 26px;
+    background: #fff;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 26px 24px;
+    text-align: center;
+  }
+  .result.win { border-color: var(--win-border); background: var(--win-bg); }
+  .result .headline {
+    font-size: clamp(1.25rem, 3.5vw, 1.7rem);
+    font-weight: 800;
+  }
+  .result.win .headline { color: var(--win-ink); }
+  .result .savings {
+    font-size: clamp(2.1rem, 6vw, 3rem);
+    font-weight: 800;
+    color: var(--win-ink);
+    margin: 6px 0 2px;
+    letter-spacing: -0.02em;
+  }
+  .result .detail {
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin-top: 6px;
+  }
+
+  .note {
+    margin-top: 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    padding: 0 8px;
+  }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 720px) {
+    .mode-select, .columns { grid-template-columns: 1fr; }
+    .wrap { padding: 16px 14px 48px; }
+    .card-body { padding: 18px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app-header">
+    <h1>Deal Comparison <span>Calculator</span></h1>
+    <p>Compare total customer cost over the full term</p>
+  </header>
+
+  <!-- ============ MODE SELECTION ============ -->
+  <section id="modeSelect" class="mode-select" aria-label="Choose comparison mode">
+    <button class="mode-card" type="button" onclick="startMode(1)">
+      <span class="icon">📱⚖️📱</span>
+      <h2>Contract vs Contract</h2>
+      <p>Compare two pay monthly contracts side by side — upfront cost, monthly cost and total over the term.</p>
+      <span class="go">Start</span>
+    </button>
+    <button class="mode-card" type="button" onclick="startMode(2)">
+      <span class="icon">💳➕📶</span>
+      <h2>SIM Free + SIM Only vs Contract</h2>
+      <p>Compare buying the phone outright with a SIM only plan against a pay monthly contract.</p>
+      <span class="go">Start</span>
+    </button>
+  </section>
+
+  <!-- ============ CALCULATOR ============ -->
+  <section id="calculator" class="hidden">
+    <div class="topbar">
+      <button class="btn btn-ghost" type="button" onclick="backToModes()">&larr; Change mode</button>
+      <h2 id="modeTitle"></h2>
+      <button class="btn btn-reset" type="button" onclick="resetAll()">Reset</button>
+    </div>
+
+    <div class="columns">
+      <!-- Column A -->
+      <div class="deal-card" id="cardA">
+        <div class="card-head">
+          <h3 id="titleA"></h3>
+          <span class="badge">CHEAPER ✓</span>
+        </div>
+        <div class="card-body" id="bodyA"></div>
+      </div>
+
+      <!-- Column B -->
+      <div class="deal-card" id="cardB">
+        <div class="card-head">
+          <h3 id="titleB"></h3>
+          <span class="badge">CHEAPER ✓</span>
+        </div>
+        <div class="card-body" id="bodyB"></div>
+      </div>
+    </div>
+
+    <div class="result" id="resultBox">
+      <div class="headline" id="resultHeadline">Enter deal details to compare</div>
+      <div class="savings hidden" id="resultSavings"></div>
+      <div class="detail" id="resultDetail"></div>
+    </div>
+
+    <p class="note">
+      <strong>Please note:</strong> this comparison is based on total price only and does not
+      take into account data allowances, minutes, texts or any other perks and benefits.
+    </p>
+  </section>
+</div>
+
+<script>
+  'use strict';
+
+  var currentMode = 1;
+
+  var gbp = new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+
+  var MODES = {
+    1: {
+      title: 'Contract vs Contract',
+      colA: {
+        name: 'Contract A',
+        fields: [
+          { id: 'a_upfront', label: 'Upfront cost', money: true },
+          { id: 'a_monthly', label: 'Monthly cost', money: true },
+          { id: 'a_months',  label: 'Months', money: false, def: 24 }
+        ],
+        subtotals: [ { id: 'a_sub1', label: 'Total monthly payments' } ],
+        totalLabel: 'Total cost over full term',
+        totalId: 'a_total'
+      },
+      colB: {
+        name: 'Contract B',
+        fields: [
+          { id: 'b_upfront', label: 'Upfront cost', money: true },
+          { id: 'b_monthly', label: 'Monthly cost', money: true },
+          { id: 'b_months',  label: 'Months', money: false, def: 24 }
+        ],
+        subtotals: [ { id: 'b_sub1', label: 'Total monthly payments' } ],
+        totalLabel: 'Total cost over full term',
+        totalId: 'b_total'
+      }
+    },
+    2: {
+      title: 'SIM Free + SIM Only vs Contract',
+      colA: {
+        name: 'SIM Free + SIM Only',
+        fields: [
+          { id: 'a_phone',   label: 'Outright phone price', money: true },
+          { id: 'a_monthly', label: 'SIM only monthly cost', money: true },
+          { id: 'a_months',  label: 'Months', money: false, def: 24 }
+        ],
+        subtotals: [ { id: 'a_sub1', label: 'SIM total over full term' } ],
+        totalLabel: 'Total combined cost',
+        totalId: 'a_total'
+      },
+      colB: {
+        name: 'Pay Monthly Contract',
+        fields: [
+          { id: 'b_upfront', label: 'Contract upfront cost', money: true },
+          { id: 'b_monthly', label: 'Contract monthly cost', money: true },
+          { id: 'b_months',  label: 'Months', money: false, def: 24 }
+        ],
+        subtotals: [],
+        totalLabel: 'Contract total over full term',
+        totalId: 'b_total'
+      }
+    }
+  };
+
+  function fieldHTML(f) {
+    var prefix = f.money ? '<span class="prefix">&pound;</span>' : '';
+    var cls = f.money ? '' : ' class="no-prefix"';
+    var val = (f.def !== undefined) ? ' value="' + f.def + '"' : '';
+    var step = f.money ? '0.01' : '1';
+    return '<div class="field">' +
+             '<label for="' + f.id + '">' + f.label + '</label>' +
+             '<div class="input-wrap">' + prefix +
+               '<input' + cls + ' type="number" inputmode="decimal" id="' + f.id + '"' +
+               ' min="0" step="' + step + '" placeholder="0"' + val + '>' +
+             '</div>' +
+           '</div>';
+  }
+
+  function columnHTML(col) {
+    var html = col.fields.map(fieldHTML).join('');
+    col.subtotals.forEach(function (s) {
+      html += '<div class="subtotal"><span class="lbl">' + s.label + '</span>' +
+              '<span class="val" id="' + s.id + '">&pound;0.00</span></div>';
+    });
+    html += '<div class="total-box"><div class="lbl">' + col.totalLabel + '</div>' +
+            '<div class="val" id="' + col.totalId + '">&pound;0.00</div></div>';
+    return html;
+  }
+
+  function buildMode(mode) {
+    var m = MODES[mode];
+    document.getElementById('modeTitle').textContent = m.title;
+    document.getElementById('titleA').textContent = m.colA.name;
+    document.getElementById('titleB').textContent = m.colB.name;
+    document.getElementById('bodyA').innerHTML = columnHTML(m.colA);
+    document.getElementById('bodyB').innerHTML = columnHTML(m.colB);
+
+    var inputs = document.querySelectorAll('#calculator input');
+    inputs.forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        if (inp.value !== '' && parseFloat(inp.value) < 0) inp.value = '0';
+        calculate();
+      });
+    });
+    calculate();
+  }
+
+  function num(id) {
+    var v = parseFloat(document.getElementById(id).value);
+    if (isNaN(v) || v < 0) return 0;
+    return v;
+  }
+
+  function calculate() {
+    var totalA, totalB;
+
+    if (currentMode === 1) {
+      var aPayments = num('a_monthly') * num('a_months');
+      var bPayments = num('b_monthly') * num('b_months');
+      totalA = num('a_upfront') + aPayments;
+      totalB = num('b_upfront') + bPayments;
+      setMoney('a_sub1', aPayments);
+      setMoney('b_sub1', bPayments);
+    } else {
+      var simTotal = num('a_monthly') * num('a_months');
+      totalA = num('a_phone') + simTotal;
+      totalB = num('b_upfront') + num('b_monthly') * num('b_months');
+      setMoney('a_sub1', simTotal);
+    }
+
+    setMoney('a_total', totalA);
+    setMoney('b_total', totalB);
+    showResult(totalA, totalB);
+  }
+
+  function setMoney(id, value) {
+    document.getElementById(id).textContent = gbp.format(value);
+  }
+
+  function showResult(totalA, totalB) {
+    var m = MODES[currentMode];
+    var cardA = document.getElementById('cardA');
+    var cardB = document.getElementById('cardB');
+    var box = document.getElementById('resultBox');
+    var headline = document.getElementById('resultHeadline');
+    var savings = document.getElementById('resultSavings');
+    var detail = document.getElementById('resultDetail');
+
+    cardA.classList.remove('winner');
+    cardB.classList.remove('winner');
+    box.classList.remove('win');
+    savings.classList.add('hidden');
+
+    if (totalA === 0 && totalB === 0) {
+      headline.textContent = 'Enter deal details to compare';
+      detail.textContent = '';
+      return;
+    }
+
+    var diff = Math.abs(totalA - totalB);
+
+    if (diff < 0.005) {
+      headline.textContent = 'Both options cost the same over the full term';
+      detail.textContent = m.colA.name + ' and ' + m.colB.name + ' both total ' + gbp.format(totalA) + '.';
+      return;
+    }
+
+    var winnerIsA = totalA < totalB;
+    var winName = winnerIsA ? m.colA.name : m.colB.name;
+    var loseName = winnerIsA ? m.colB.name : m.colA.name;
+    var winTotal = winnerIsA ? totalA : totalB;
+    var loseTotal = winnerIsA ? totalB : totalA;
+
+    (winnerIsA ? cardA : cardB).classList.add('winner');
+    box.classList.add('win');
+    headline.textContent = winName + ' is the cheaper option';
+    savings.textContent = 'Save ' + gbp.format(diff);
+    savings.classList.remove('hidden');
+    detail.textContent = winName + ' costs ' + gbp.format(winTotal) + ' in total, compared to ' +
+                         gbp.format(loseTotal) + ' for ' + loseName + ' — a saving of ' +
+                         gbp.format(diff) + ' over the full term.';
+  }
+
+  function startMode(mode) {
+    currentMode = mode;
+    document.getElementById('modeSelect').classList.add('hidden');
+    document.getElementById('calculator').classList.remove('hidden');
+    buildMode(mode);
+    window.scrollTo(0, 0);
+  }
+
+  function backToModes() {
+    document.getElementById('calculator').classList.add('hidden');
+    document.getElementById('modeSelect').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  }
+
+  function resetAll() {
+    buildMode(currentMode);
+  }
+</script>
+</body>
+</html>
