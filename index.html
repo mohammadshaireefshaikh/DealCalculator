@@ -222,6 +222,64 @@
     box-shadow: 0 0 0 3px rgba(0, 128, 128, 0.15);
   }
 
+  .check-row { margin: -4px 0 14px; }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .check input {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex: none;
+  }
+  .inc-note {
+    margin-top: 7px;
+    color: var(--accent-dark);
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .start-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--accent-light);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+  }
+  .start-bar label { font-weight: 700; font-size: 1rem; }
+  .start-bar select {
+    font: inherit;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 10px 14px;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--ink);
+  }
+  .start-bar select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 128, 128, 0.15);
+  }
+  .start-hint {
+    flex-basis: 100%;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
   .subtotal {
     display: flex;
     justify-content: space-between;
@@ -336,6 +394,12 @@
       <button class="btn btn-reset" type="button" onclick="resetAll()">Reset</button>
     </div>
 
+    <div class="start-bar hidden" id="startBar">
+      <label for="startMonth">Contract start month</label>
+      <select id="startMonth"></select>
+      <span class="start-hint">Used to work out how many April price increases fall within the term</span>
+    </div>
+
     <div class="columns">
       <!-- Column A -->
       <div class="deal-card" id="cardA">
@@ -365,6 +429,8 @@
     <p class="note">
       <strong>Please note:</strong> this comparison is based on total price only and does not
       take into account data allowances, minutes, texts or any other perks and benefits.
+      Where selected, the April price increase is added to the monthly cost from each April
+      within the term — a typical 24-month contract includes 2 increases.
     </p>
   </section>
 </div>
@@ -448,8 +514,19 @@
            '</div>';
   }
 
-  function columnHTML(col) {
+  function columnHTML(col, prefix) {
     var html = col.fields.map(fieldHTML).join('');
+    html += '<div class="check-row">' +
+              '<label class="check"><input type="checkbox" id="' + prefix + '_incchk">' +
+              ' Price increase every April</label>' +
+            '</div>' +
+            '<div class="field hidden" id="' + prefix + '_incwrap">' +
+              '<label for="' + prefix + '_incamt">April increase (added to monthly cost)</label>' +
+              '<div class="input-wrap"><span class="prefix">&pound;</span>' +
+                '<input type="number" inputmode="decimal" id="' + prefix + '_incamt"' +
+                ' min="0" step="0.01" placeholder="0"></div>' +
+              '<div class="inc-note" id="' + prefix + '_incnote"></div>' +
+            '</div>';
     col.subtotals.forEach(function (s) {
       html += '<div class="subtotal"><span class="lbl">' + s.label + '</span>' +
               '<span class="val" id="' + s.id + '">&pound;0.00</span></div>';
@@ -459,22 +536,45 @@
     return html;
   }
 
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function initStartMonth() {
+    var sel = document.getElementById('startMonth');
+    sel.innerHTML = MONTH_NAMES.map(function (n, i) {
+      return '<option value="' + i + '">' + n + '</option>';
+    }).join('');
+    sel.value = String(new Date().getMonth());
+    document.getElementById('startBar').classList.add('hidden');
+  }
+
   function buildMode(mode) {
     var m = MODES[mode];
     document.getElementById('modeTitle').textContent = m.title;
     document.getElementById('titleA').textContent = m.colA.name;
     document.getElementById('titleB').textContent = m.colB.name;
-    document.getElementById('bodyA').innerHTML = columnHTML(m.colA);
-    document.getElementById('bodyB').innerHTML = columnHTML(m.colB);
+    document.getElementById('bodyA').innerHTML = columnHTML(m.colA, 'a');
+    document.getElementById('bodyB').innerHTML = columnHTML(m.colB, 'b');
+    initStartMonth();
 
-    var inputs = document.querySelectorAll('#calculator input');
-    inputs.forEach(function (inp) {
-      inp.addEventListener('input', function () {
-        if (inp.value !== '' && parseFloat(inp.value) < 0) inp.value = '0';
+    document.querySelectorAll('#calculator input, #calculator select').forEach(function (inp) {
+      var handler = function () {
+        if (inp.type === 'number' && inp.value !== '' && parseFloat(inp.value) < 0) inp.value = '0';
+        updateIncVisibility();
         calculate();
-      });
+      };
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
     });
     calculate();
+  }
+
+  function updateIncVisibility() {
+    var aOn = document.getElementById('a_incchk').checked;
+    var bOn = document.getElementById('b_incchk').checked;
+    document.getElementById('a_incwrap').classList.toggle('hidden', !aOn);
+    document.getElementById('b_incwrap').classList.toggle('hidden', !bOn);
+    document.getElementById('startBar').classList.toggle('hidden', !aOn && !bOn);
   }
 
   function num(id) {
@@ -483,21 +583,47 @@
     return v;
   }
 
+  // Sum of all monthly payments for a column, applying the April price
+  // increase cumulatively from each April that falls within the term
+  // (the start month itself never counts — the customer signs at the
+  // current price). A typical 24-month contract picks up 2 increases.
+  function monthlySum(prefix) {
+    var base = num(prefix + '_monthly');
+    var months = num(prefix + '_months');
+    var incOn = document.getElementById(prefix + '_incchk').checked;
+    var inc = incOn ? num(prefix + '_incamt') : 0;
+    var start = parseInt(document.getElementById('startMonth').value, 10) || 0;
+
+    var whole = Math.floor(months);
+    var rises = 0;
+    var sum = 0;
+    for (var k = 1; k <= whole; k++) {
+      if (k > 1 && (start + k - 1) % 12 === 3) rises++;
+      sum += base + inc * rises;
+    }
+    sum += (months - whole) * (base + inc * rises);
+
+    if (incOn) {
+      document.getElementById(prefix + '_incnote').textContent =
+        rises + ' April increase' + (rises === 1 ? '' : 's') + ' within this term';
+    }
+    return sum;
+  }
+
   function calculate() {
     var totalA, totalB;
+    var aPayments = monthlySum('a');
+    var bPayments = monthlySum('b');
 
     if (currentMode === 1) {
-      var aPayments = num('a_monthly') * num('a_months');
-      var bPayments = num('b_monthly') * num('b_months');
       totalA = num('a_upfront') + aPayments;
       totalB = num('b_upfront') + bPayments;
       setMoney('a_sub1', aPayments);
       setMoney('b_sub1', bPayments);
     } else {
-      var simTotal = num('a_monthly') * num('a_months');
-      totalA = num('a_phone') + simTotal;
-      totalB = num('b_upfront') + num('b_monthly') * num('b_months');
-      setMoney('a_sub1', simTotal);
+      totalA = num('a_phone') + aPayments;
+      totalB = num('b_upfront') + bPayments;
+      setMoney('a_sub1', aPayments);
     }
 
     setMoney('a_total', totalA);
